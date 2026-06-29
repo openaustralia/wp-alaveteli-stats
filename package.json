@@ -1,0 +1,13 @@
+{
+	"name": "wp-alaveteli-stats",
+	"private": true,
+	"description": "Shows live statistics from an Alaveteli site on a WordPress page.",
+	"license": "MIT",
+	"scripts": {
+		"wp-env": "wp-env",
+		"test:php": "wp-env run tests-cli --env-cwd=wp-content/plugins/wp-alaveteli-stats vendor/bin/phpunit"
+	},
+	"devDependencies": {
+		"@wordpress/env": "^11.9.0"
+	}
+}

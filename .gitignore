@@ -15,10 +15,19 @@
 /license.txt
 /readme.html
 /wp-*.php
+# This repo is the plugin itself, so don't ignore its own main file.
+!/wp-alaveteli-stats.php
 /xmlrpc.php
 
 # Configuration
 wp-config.php
+
+# Dependencies (lockfiles are committed; installed trees are not)
+/vendor/
+/node_modules/
+
+# PHPUnit
+/.phpunit.result.cache
 
 # Example themes
 /wp-content/themes/twenty*/

@@ -1,0 +1,18 @@
+{
+	"name": "openaustralia/wp-alaveteli-stats",
+	"description": "Shows live statistics from an Alaveteli site on a WordPress page.",
+	"type": "wordpress-plugin",
+	"license": "MIT",
+	"require-dev": {
+		"phpunit/phpunit": "^9.6",
+		"yoast/phpunit-polyfills": "^2.0"
+	},
+	"config": {
+		"platform": {
+			"php": "8.3"
+		}
+	},
+	"scripts": {
+		"test": "phpunit"
+	}
+}
