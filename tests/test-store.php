@@ -87,6 +87,21 @@ class Test_Store extends WP_UnitTestCase {
 		$this->assertSame( 'transport', Alaveteli_Stats_Store::get_meta()['last_error_category'] );
 	}
 
+	/** Regression guard (#3): the stats blob must not be autoloaded on every request. */
+	public function test_save_does_not_autoload_the_data_option() {
+		global $wpdb;
+
+		Alaveteli_Stats_Store::save( array( 'k' => 1 ) );
+
+		$autoload = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT autoload FROM {$wpdb->options} WHERE option_name = %s",
+				Alaveteli_Stats_Store::OPTION_DATA
+			)
+		);
+		$this->assertNotContains( $autoload, array( 'yes', 'on', 'auto' ), 'stats blob must not autoload' );
+	}
+
 	public function test_get_stat_returns_value_or_null() {
 		Alaveteli_Stats_Store::save( array( 'k' => 42 ) );
 		$this->assertSame( 42, Alaveteli_Stats_Store::get_stat( 'k' ) );

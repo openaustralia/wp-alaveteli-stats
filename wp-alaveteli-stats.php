@@ -35,12 +35,20 @@ require_once ALAVETELI_STATS_DIR . 'includes/class-alaveteli-stats-settings.php'
 class Alaveteli_Stats {
 
 	/**
+	 * Transient lock that serialises refreshes so an overlapping cron run and a
+	 * manual "Refresh now" do not race on the stored failure counter.
+	 */
+	const LOCK_KEY = 'alaveteli_stats_refreshing';
+	const LOCK_TTL = 60;
+
+	/**
 	 * Register runtime hooks. Runs on every request.
 	 */
 	public static function boot() {
 		add_action( 'init', array( __CLASS__, 'load_textdomain' ) );
 		add_filter( 'cron_schedules', array( __CLASS__, 'add_schedule' ) );
 		add_action( ALAVETELI_STATS_CRON_HOOK, array( __CLASS__, 'refresh' ) );
+		add_action( 'init', array( __CLASS__, 'ensure_scheduled' ) );
 
 		Alaveteli_Stats_Render::init();
 
@@ -78,13 +86,40 @@ class Alaveteli_Stats {
 	 * @param bool $retry Whether to retry once on a transient error. Pass false
 	 *                    on interactive requests so they do not block on a
 	 *                    doubled timeout.
-	 * @return array|WP_Error The fetch result.
+	 * @return array|WP_Error The fetched statistics, or the fetch error. When a
+	 *                        refresh is already in flight, the current cached
+	 *                        statistics are returned instead (same array shape
+	 *                        as a successful fetch).
 	 */
 	public static function refresh( $retry = true ) {
-		$result = Alaveteli_Stats_Fetcher::fetch( Alaveteli_Stats_Store::get_source_url(), $retry );
-		Alaveteli_Stats_Store::save( $result );
+		// Best-effort lock: if a refresh is already in flight, return the current
+		// cached statistics rather than racing on save()'s read-modify-write.
+		if ( get_transient( self::LOCK_KEY ) ) {
+			return Alaveteli_Stats_Store::get_stats();
+		}
+
+		set_transient( self::LOCK_KEY, 1, self::LOCK_TTL );
+
+		try {
+			$result = Alaveteli_Stats_Fetcher::fetch( Alaveteli_Stats_Store::get_source_url(), $retry );
+			Alaveteli_Stats_Store::save( $result );
+		} finally {
+			delete_transient( self::LOCK_KEY );
+		}
 
 		return $result;
+	}
+
+	/**
+	 * Ensure the recurring refresh is scheduled. Runs on every request while the
+	 * plugin is active, so the schedule self-heals if activation scheduling was
+	 * blocked or the event was lost; a deactivated plugin never reaches here.
+	 */
+	public static function ensure_scheduled() {
+		if ( ! wp_next_scheduled( ALAVETELI_STATS_CRON_HOOK ) ) {
+			// One interval out: a fresh activation fetch already covers "now".
+			wp_schedule_event( time() + 2 * HOUR_IN_SECONDS, ALAVETELI_STATS_SCHEDULE, ALAVETELI_STATS_CRON_HOOK );
+		}
 	}
 
 	/**
@@ -96,14 +131,13 @@ class Alaveteli_Stats {
 		// Ensure the custom interval is registered before scheduling.
 		add_filter( 'cron_schedules', array( __CLASS__, 'add_schedule' ) );
 
-		// Start the recurring schedule one interval out: the immediate fetch
-		// below covers "now", so a first run at time() would just refetch.
-		if ( ! wp_next_scheduled( ALAVETELI_STATS_CRON_HOOK ) ) {
-			wp_schedule_event( time() + 2 * HOUR_IN_SECONDS, ALAVETELI_STATS_SCHEDULE, ALAVETELI_STATS_CRON_HOOK );
-		}
+		self::ensure_scheduled();
 
 		try {
-			self::refresh();
+			// Activation is interactive (the admin waits on the request), so skip
+			// the retry: a doubled timeout could exceed max_execution_time and
+			// turn a momentarily-down source into a failed activation.
+			self::refresh( false );
 		} catch ( \Throwable $e ) {
 			// Swallow: the scheduled event will retry.
 		}

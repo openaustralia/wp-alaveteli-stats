@@ -22,6 +22,8 @@ class Test_Render extends WP_UnitTestCase {
 				'blank'                 => '',
 				'name'                  => 'hello',
 				'quote"key'             => 7,
+				'tiny'                  => 0.00001,
+				'huge'                  => 9007199254740993,
 			)
 		);
 	}
@@ -79,6 +81,20 @@ class Test_Render extends WP_UnitTestCase {
 	public function test_fractional_value_preserves_source_decimals() {
 		$this->assertStringContainsString( '>4.5<', Alaveteli_Stats_Render::stat( 'ratio' ) );
 		$this->assertStringContainsString( '>12.50<', Alaveteli_Stats_Render::stat( 'ratio_str' ) );
+	}
+
+	/** Regression guard (#2): a small fraction must not be flattened to zero by E-notation. */
+	public function test_small_fraction_is_not_rendered_as_zero() {
+		$out = Alaveteli_Stats_Render::stat( 'tiny' );
+		$this->assertStringContainsString( '>0.00001<', $out );
+		$this->assertStringNotContainsString( '0.0000<', $out );
+	}
+
+	/** Regression guard (#6): an integer above 2^53 must keep full precision, not round via float. */
+	public function test_large_integer_keeps_full_precision() {
+		$out = Alaveteli_Stats_Render::stat( 'huge' );
+		$this->assertStringContainsString( '9,007,199,254,740,993', $out );
+		$this->assertStringNotContainsString( '9,007,199,254,740,992', $out );
 	}
 
 	/** Regression guard: the fallback is escaped so it cannot inject markup. */

@@ -105,19 +105,73 @@ class Alaveteli_Stats_Render {
 			return (string) $value;
 		}
 
-		$number = (float) $value;
-
-		// Whole numbers: format with no decimals. Pass the float (not an int
-		// cast) so very large counts are not truncated or overflowed.
-		if ( $number === floor( $number ) ) {
-			return number_format_i18n( $number, 0 );
+		// Work from the source's own digits rather than via number_format_i18n,
+		// which takes a float: a float cast would silently lose precision on a
+		// very large integer and render a small fraction in scientific notation
+		// (e.g. 1.0E-5), which then formats as 0. Grouping the digit string
+		// directly avoids both, while still applying the locale's separators.
+		$string   = self::decimal_string( $value );
+		$negative = '' !== $string && '-' === $string[0];
+		if ( $negative ) {
+			$string = substr( $string, 1 );
 		}
 
-		// Fractional values: keep the decimals the source provided, since
-		// number_format_i18n() would otherwise round to a whole number.
-		$parts    = explode( '.', (string) $value );
-		$decimals = isset( $parts[1] ) ? strlen( $parts[1] ) : 0;
+		$dot       = strpos( $string, '.' );
+		$int_part  = ( false === $dot ) ? $string : substr( $string, 0, $dot );
+		$frac_part = ( false === $dot ) ? '' : substr( $string, $dot + 1 );
 
-		return number_format_i18n( $number, $decimals );
+		global $wp_locale;
+		$thousands_sep = isset( $wp_locale ) ? $wp_locale->number_format['thousands_sep'] : ',';
+		$decimal_point = isset( $wp_locale ) ? $wp_locale->number_format['decimal_point'] : '.';
+
+		$out = ( $negative ? '-' : '' ) . self::group_thousands( $int_part, $thousands_sep );
+		if ( '' !== $frac_part ) {
+			$out .= $decimal_point . $frac_part;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Render a numeric value as a plain decimal digit string, preserving the
+	 * source's exact decimals and never falling back to scientific notation.
+	 *
+	 * @param int|float|string $value A value already known to be numeric.
+	 * @return string
+	 */
+	private static function decimal_string( $value ) {
+		// A plain decimal string is used verbatim so trailing zeros the source
+		// chose (e.g. "12.50") survive.
+		if ( is_string( $value ) && preg_match( '/^-?\d+(\.\d+)?$/', $value ) ) {
+			return $value;
+		}
+
+		if ( is_int( $value ) ) {
+			return (string) $value;
+		}
+
+		// A float, or a numeric string in another form (e.g. "1e3", ".5"):
+		// expand to plain decimal notation, then drop the padding zeros.
+		$string = sprintf( '%.14F', (float) $value );
+		if ( false !== strpos( $string, '.' ) ) {
+			$string = rtrim( rtrim( $string, '0' ), '.' );
+		}
+
+		return $string;
+	}
+
+	/**
+	 * Insert a thousands separator into a string of digits.
+	 *
+	 * @param string $digits Digits only (no sign or decimal point).
+	 * @param string $sep    Separator to insert.
+	 * @return string
+	 */
+	private static function group_thousands( $digits, $sep ) {
+		if ( '' === $sep || strlen( $digits ) <= 3 ) {
+			return $digits;
+		}
+
+		return strrev( implode( $sep, str_split( strrev( $digits ), 3 ) ) );
 	}
 }

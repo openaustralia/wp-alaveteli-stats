@@ -145,7 +145,9 @@ class Alaveteli_Stats_Store {
 			);
 		}
 
-		update_option( self::OPTION_DATA, $data );
+		// Do not autoload: the stats blob is only read on shortcode and admin
+		// pages, so loading it on every request site-wide would be wasteful.
+		update_option( self::OPTION_DATA, $data, false );
 
 		return $data;
 	}

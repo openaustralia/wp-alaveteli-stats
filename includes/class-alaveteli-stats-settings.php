@@ -93,8 +93,18 @@ class Alaveteli_Stats_Settings {
 	 */
 	public static function sanitize_settings( $input ) {
 		$url = ( is_array( $input ) && isset( $input['source_url'] ) ) ? trim( $input['source_url'] ) : '';
+		$url = esc_url_raw( $url );
 
-		return array( 'source_url' => esc_url_raw( $url ) );
+		// When the URL is unchanged, update_option() does not fire the
+		// add_option_/update_option_ hooks that refresh_after_save() relies on,
+		// so an admin re-saving the same URL to retry a failed fetch would see
+		// nothing happen. Refresh here for that case; a changed URL is handled by
+		// those hooks instead, so this does not double-fetch.
+		if ( '' !== $url && $url === Alaveteli_Stats_Store::get_source_url() ) {
+			Alaveteli_Stats::refresh( false );
+		}
+
+		return array( 'source_url' => $url );
 	}
 
 	/**

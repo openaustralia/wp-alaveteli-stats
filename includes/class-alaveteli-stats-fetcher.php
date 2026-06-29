@@ -105,10 +105,12 @@ class Alaveteli_Stats_Fetcher {
 
 		$decoded = json_decode( $body, true );
 
-		// Reject anything that is not a non-empty object of statistics. An empty
-		// {} or [] is valid JSON but carries no data, and treating it as success
-		// would overwrite the last good values with nothing.
-		if ( ! is_array( $decoded ) || array() === $decoded ) {
+		// Reject anything that is not a non-empty object of statistics. Treating
+		// a bad-but-valid 200 as success would overwrite the last good values:
+		// an empty {} or [] carries no data; a JSON list (e.g. [1,2,3]) is not a
+		// keyed stats object; and an object with no numeric value at all (e.g.
+		// {"error":"rate limited"} from a proxy, or a wrong URL) is not stats.
+		if ( ! self::looks_like_stats( $decoded ) ) {
 			return new WP_Error(
 				'invalid',
 				__( 'The response did not contain any statistics, so this may not be an Alaveteli site.', 'wp-alaveteli-stats' ),
@@ -122,6 +124,33 @@ class Alaveteli_Stats_Fetcher {
 		}
 
 		return $decoded;
+	}
+
+	/**
+	 * Whether a decoded body looks like a usable set of Alaveteli statistics:
+	 * a non-empty JSON object (not a list) carrying at least one numeric value.
+	 *
+	 * @param mixed $decoded Decoded JSON.
+	 * @return bool
+	 */
+	private static function looks_like_stats( $decoded ) {
+		if ( ! is_array( $decoded ) || array() === $decoded ) {
+			return false;
+		}
+
+		// A JSON list decodes to sequential integer keys; statistics are keyed
+		// by name.
+		if ( array_keys( $decoded ) === range( 0, count( $decoded ) - 1 ) ) {
+			return false;
+		}
+
+		foreach ( $decoded as $value ) {
+			if ( is_numeric( $value ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
@@ -161,18 +190,8 @@ class Alaveteli_Stats_Fetcher {
 	 * @return string
 	 */
 	private static function snippet( $body ) {
-		$body = trim( wp_strip_all_tags( (string) $body ) );
-
-		// Truncate on a character boundary so a multibyte sequence is never cut
-		// mid-character, which would leave invalid UTF-8 that esc_html() blanks.
-		if ( function_exists( 'mb_strimwidth' ) ) {
-			return mb_strimwidth( $body, 0, self::SNIPPET_SIZE, '...' );
-		}
-
-		if ( strlen( $body ) > self::SNIPPET_SIZE ) {
-			$body = substr( $body, 0, self::SNIPPET_SIZE ) . '...';
-		}
-
-		return $body;
+		// wp_html_excerpt strips tags and truncates on a multibyte-safe boundary,
+		// appending the ellipsis only when it actually trims the string.
+		return wp_html_excerpt( (string) $body, self::SNIPPET_SIZE, '...' );
 	}
 }
